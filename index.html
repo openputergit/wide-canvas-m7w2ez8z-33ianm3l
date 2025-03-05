@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier Invoice Management System</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #F7FAFC;
+        }
+        .invoice-form label {
+            font-family: 'Open Sans', sans-serif;
+        }
+        .modal {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .print-only {
+            display: none;
+        }
+        @media print {
+            .print-only {
+                display: block;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <nav class="bg-[#2C5282] text-white p-4 no-print">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="flex items-center">
+                    <img src="https://via.placeholder.com/40" alt="Logo" class="h-8 w-8 mr-2">
+                    <h1 class="text-xl font-bold">Courier Invoice System</h1>
+                </div>
+                <div class="flex space-x-4">
+                    <button @click="currentView = 'dashboard'" :class="{'text-white': currentView === 'dashboard', 'text-gray-300': currentView !== 'dashboard'}">
+                        <i class="bi bi-speedometer2 mr-1"></i> Dashboard
+                    </button>
+                    <button @click="currentView = 'invoices'" :class="{'text-white': currentView === 'invoices', 'text-gray-300': currentView !== 'invoices'}">
+                        <i class="bi bi-receipt mr-1"></i> Invoices
+                    </button>
+                    <button @click="currentView = 'settings'" :class="{'text-white': currentView === 'settings', 'text-gray-300': currentView !== 'settings'}">
+                        <i class="bi bi-gear mr-1"></i> Settings
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mx-auto p-6">
+            <!-- Settings View -->
+            <div v-if="currentView === 'settings'" class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-2xl font-semibold mb-6">Company Settings</h2>
+                <form @submit.prevent="saveCompanySettings" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Company Name</label>
+                            <input v-model="companySettings.name" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">GST Number</label>
+                            <input v-model="companySettings.gst" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Address</label>
+                            <textarea v-model="companySettings.address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Company Logo</label>
+                            <input type="file" accept="image/*" @change="handleLogoUpload" class="mt-1 block w-full">
+                        </div>
+                    </div>
+                    <button type="submit" class="bg-[#2C5282] text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                        Save Settings
+                    </button>
+                </form>
+            </div>
+
+            <!-- Dashboard View -->
+            <div v-if="currentView === 'dashboard'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Total Invoices</h3>
+                    <p class="text-3xl font-bold text-[#2C5282]">{{totalInvoices}}</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Pending Amount</h3>
+                    <p class="text-3xl font-bold text-[#E53E3E]">₹{{pendingAmount}}</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">This Month</h3>
+                    <p class="text-3xl font-bold text-[#38A169]">₹{{monthlyRevenue}}</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-semibold mb-2">Active Clients</h3>
+                    <p class="text-3xl font-bold text-[#2C5282]">{{activeClients}}</p>
+                </div>
+            </div>
+
+            <!-- Invoices View -->
+            <div v-if="currentView === 'invoices'" class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-semibold">Invoices</h2>
+                    <button @click="showNewInvoiceModal = true" class="bg-[#38A169] text-white px-4 py-2 rounded-lg hover:bg-green-600">
+                        <i class="bi bi-plus-lg mr-1"></i> New Invoice
+                    </button>
+                </div>
+                
+                <!-- Invoice List -->
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="invoice in invoices" :key="invoice.id" class="border-b">
+                                <td class="px-6 py-4">{{invoice.number}}</td>
+                                <td class="px-6 py-4">{{invoice.date}}</td>
+                                <td class="px-6 py-4">{{invoice.client}}</td>
+                                <td class="px-6 py-4">₹{{invoice.amount}}</td>
+                                <td class="px-6 py-4">
+                                    <span :class="getStatusClass(invoice.status)">{{invoice.status}}</span>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <button @click="viewInvoice(invoice)" class="text-blue-600 hover:text-blue-800 mr-2">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button @click="generatePDF(invoice)" class="text-green-600 hover:text-green-800 mr-2">
+                                        <i class="bi bi-file-pdf"></i>
+                                    </button>
+                                    <button @click="deleteInvoice(invoice.id)" class="text-red-600 hover:text-red-800">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Invoice Modal -->
+            <div v-if="showNewInvoiceModal" class="fixed inset-0 flex items-center justify-center z-50">
+                <div class="modal absolute inset-0"></div>
+                <div class="bg-white rounded-lg p-8 z-10 w-full max-w-4xl h-[90vh] overflow-y-auto">
+                    <h2 class="text-2xl font-semibold mb-6">Create New Invoice</h2>
+                    <form @submit.prevent="saveInvoice" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Basic Info -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Client</label>
+                                <select v-model="newInvoice.clientId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                    <option v-for="client in clients" :key="client.id" :value="client.id">
+                                        {{client.name}}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Airway Bill Number</label>
+                                <input v-model="newInvoice.awbNumber" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                            </div>
+                        </div>
+
+                        <!-- Charges -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold">Charges</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Base Rate</label>
+                                    <input v-model="newInvoice.baseRate" type="number" @input="calculateTotal" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Fuel Surcharge</label>
+                                    <input v-model="newInvoice.fuelSurcharge" type="number" @input="calculateTotal" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Additional Fees</label>
+                                    <input v-model="newInvoice.additionalFees" type="number" @input="calculateTotal" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GST Details -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold">GST Details</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">CGST (9%)</label>
+                                    <input v-model="newInvoice.cgst" type="number" readonly class="mt-1 block w-full bg-gray-100 rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">SGST (9%)</label>
+                                    <input v-model="newInvoice.sgst" type="number" readonly class="mt-1 block w-full bg-gray-100 rounded-md border-gray-300 shadow-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Total -->
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <span class="font-semibold">Total Amount:</span>
+                                <span class="text-2xl font-bold">₹{{newInvoice.total}}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end space-x-4">
+                            <button type="button" @click="showNewInvoiceModal = false" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-[#38A169] text-white rounded-md hover:bg-green-600">
+                                Create Invoice
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    currentView: 'dashboard',
+                    showNewInvoiceModal: false,
+                    companySettings: {
+                        name: '',
+                        gst: '',
+                        address: '',
+                        logo: null
+                    },
+                    totalInvoices: 125,
+                    pendingAmount: '45,250',
+                    monthlyRevenue: '1,25,000',
+                    activeClients: 42,
+                    newInvoice: {
+                        clientId: '',
+                        awbNumber: '',
+                        baseRate: 0,
+                        fuelSurcharge: 0,
+                        additionalFees: 0,
+                        cgst: 0,
+                        sgst: 0,
+                        total: 0
+                    },
+                    invoices: [
+                        { id: 1, number: 'INV-001', date: '2023-11-01', client: 'ABC Corp', amount: '5,600', status: 'Paid' },
+                        { id: 2, number: 'INV-002', date: '2023-11-02', client: 'XYZ Ltd', amount: '8,900', status: 'Pending' },
+                        { id: 3, number: 'INV-003', date: '2023-11-03', client: 'PQR Inc', amount: '12,300', status: 'Overdue' },
+                    ],
+                    clients: [
+                        { id: 1, name: 'ABC Corp' },
+                        { id: 2, name: 'XYZ Ltd' },
+                        { id: 3, name: 'PQR Inc' },
+                    ]
+                }
+            },
+            methods: {
+                getStatusClass(status) {
+                    const classes = "px-2 py-1 text-sm rounded-full ";
+                    switch(status) {
+                        case 'Paid': return classes + 'bg-green-100 text-green-800';
+                        case 'Pending': return classes + 'bg-yellow-100 text-yellow-800';
+                        case 'Overdue': return classes + 'bg-red-100 text-red-800';
+                        default: return classes + 'bg-gray-100 text-gray-800';
+                    }
+                },
+                calculateTotal() {
+                    const subtotal = Number(this.newInvoice.baseRate) + 
+                                   Number(this.newInvoice.fuelSurcharge) + 
+                                   Number(this.newInvoice.additionalFees);
+                    this.newInvoice.cgst = subtotal * 0.09;
+                    this.newInvoice.sgst = subtotal * 0.09;
+                    this.newInvoice.total = subtotal + this.newInvoice.cgst + this.newInvoice.sgst;
+                },
+                handleLogoUpload(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.companySettings.logo = URL.createObjectURL(file);
+                    }
+                },
+                saveCompanySettings() {
+                    // Save to database/localStorage
+                    localStorage.setItem('companySettings', JSON.stringify(this.companySettings));
+                    alert('Settings saved successfully!');
+                },
+                saveInvoice() {
+                    // Save to database
+                    this.invoices.unshift({
+                        id: this.invoices.length + 1,
+                        number: `INV-${String(this.invoices.length + 1).padStart(3, '0')}`,
+                        date: new Date().toISOString().split('T')[0],
+                        client: this.clients.find(c => c.id === this.newInvoice.clientId)?.name,
+                        amount: this.newInvoice.total.toFixed(2),
+                        status: 'Pending'
+                    });
+                    this.showNewInvoiceModal = false;
+                },
+                async generatePDF(invoice) {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    
+                    // Add company details
+                    doc.setFontSize(20);
+                    doc.text('Invoice', 105, 20, { align: 'center' });
+                    
+                    doc.setFontSize(12);
+                    doc.text(`Invoice #: ${invoice.number}`, 20, 40);
+                    doc.text(`Date: ${invoice.date}`, 20, 50);
+                    doc.text(`Client: ${invoice.client}`, 20, 60);
+                    doc.text(`Amount: ₹${invoice.amount}`, 20, 70);
+                    doc.text(`Status: ${invoice.status}`, 20, 80);
+                    
+                    // Save PDF
+                    doc.save(`invoice-${invoice.number}.pdf`);
+                }
+            },
+            mounted() {
+                // Load company settings from localStorage
+                const savedSettings = localStorage.getItem('companySettings');
+                if (savedSettings) {
+                    this.companySettings = JSON.parse(savedSettings);
+                }
+            }
+        }).mount('#app')
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
